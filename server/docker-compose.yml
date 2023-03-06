@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  db:
+    image: mysql/mysql-server:latest
+
+    restart: always
+    command: mysqld --default-authentication-plugin=mysql_native_password
+    environment:
+      - MYSQL_ROOT_PASSWORD=bloxs123
+      - MYSQL_DATABASE=db_bloxs
+      - MYSQL_USER=bloxs
+      - MYSQL_PASSWORD=bloxs123
+    ports:
+      - '3306:3306'
