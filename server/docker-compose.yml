@@ -11,4 +11,4 @@ services:
       - MYSQL_USER=bloxs
       - MYSQL_PASSWORD=bloxs123
     ports:
-      - '3306:3306'
+      - '3307:3306'
