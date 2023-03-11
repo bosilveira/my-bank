@@ -1,6 +1,5 @@
-import { Box, Button, Card, CardBody, CardFooter, CardHeader, Container, Heading, SimpleGrid, Text, Image } from "@chakra-ui/react";
-import Login from "./login.form";
-import { Center, Square, Circle } from '@chakra-ui/react'
+import { Button, Card, CardBody, CardFooter, CardHeader, Container, Heading, Text, Image } from "@chakra-ui/react";
+import { Center } from '@chakra-ui/react'
 
 const StartPage = () => {
     return <>
@@ -13,7 +12,7 @@ const StartPage = () => {
         />
     </Center>
 
-    <Container maxW='1200px' centerContent  flexDir='row' gap='16px' alignItems='stretch'>
+    <Container maxW='1200px' centerContent  flexDir='row' gap='16px' alignItems='stretch' padding='16px 0'>
         <Card>
             <CardHeader>
                 <Heading size='md'> Acesso Imediato ao<br/>Mercado de Capitais</Heading>

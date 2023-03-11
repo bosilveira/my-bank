@@ -1,15 +1,12 @@
-import { Container, Spacer, Center, Heading, Menu,
-    MenuButton,
-    MenuList,
-    MenuItem,
-    Button, Divider } from '@chakra-ui/react'
+import { Container, Spacer, Center, Heading, Menu, MenuButton, MenuList, MenuItem, Button, Divider } from '@chakra-ui/react'
 import { ChevronDownIcon } from '@chakra-ui/icons';
 import { useNavigate } from "react-router-dom";
 
-function Header() {
+const Header = () => {
+
     const navigate = useNavigate();
 
-    return (<>
+    return <>
     <Center
     height={'98px'}
     width={'100%'}
@@ -33,6 +30,11 @@ function Header() {
                         Acesso
                     </MenuButton>
                     <MenuList>
+                        
+                        <MenuItem onClick={()=>navigate('/')}>
+                            Principal
+                        </MenuItem>
+
                         <MenuItem onClick={()=>navigate('/login')}>
                             Login
                         </MenuItem>
@@ -50,7 +52,7 @@ function Header() {
             </Center>
         </Container>
     </Center>
-    </>);
+    </>
 }
 
 export default Header;

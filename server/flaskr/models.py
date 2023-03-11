@@ -1,17 +1,12 @@
 from flaskr import db
-from typing import List, Literal
-from typing import Optional
+from typing import List
 from sqlalchemy import ForeignKey
 from sqlalchemy import String, func
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
-from sqlalchemy import BIGINT, Integer, NVARCHAR, String, TIMESTAMP, Boolean, UUID, Numeric, Date, DateTime
-from sqlalchemy.dialects.mysql import VARCHAR, NVARCHAR
+from sqlalchemy import Integer, String, Numeric
 import datetime
-from sqlalchemy import types
-from typing import Type
 import uuid
 import decimal
 import enum
@@ -153,7 +148,7 @@ class Conta(db.Model):
     transacoes: Mapped[List["Transacao"]] = relationship(back_populates="conta")
 
 
-    def __init__(self, pessoa, saldo = 0, limiteSaqueDiario = 0, tipoConta = 0, flagAtivo = True):
+    def __init__(self, pessoa, saldo = 1000, limiteSaqueDiario = 1000, tipoConta = 0, flagAtivo = True):
         self.idConta = uuid.uuid4()
         self.pessoa = pessoa
         self.saldo = saldo

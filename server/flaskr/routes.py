@@ -2,6 +2,7 @@ import uuid
 from flask import request
 from datetime import datetime, timedelta
 from flask import current_app as app
+from flask_cors import cross_origin
 from flaskr import db
 from flaskr.models import Pessoa, Usuario, Conta, Transacao, TipoUsuario
 from flask import jsonify
@@ -36,20 +37,23 @@ def token_cliente(route):
         if not token:
             return jsonify({'mensagem': 'Necessário apresentar token'}), 400 #Bad Request
         try:
-                data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-                if data.get('acesso') == 'ADMIN':
-                    acesso = 'ADMIN'
-                else:
-                    usuario = db.session.scalars(select(Usuario).where(Usuario.idUsuario == data.get('id'))).first()
-                    if usuario == None:
-                        raise Exception('Cliente não encontrado')
-                    if not usuario.flagAtivo:
-                        raise Exception('Cliente bloqueado')
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+            if data.get('acesso') == 'ADMIN':
+                acesso = 'ADMIN'
+            else:
+                acesso = data.get('acesso') 
+                usuario = db.session.scalars(select(Usuario).where(Usuario.idUsuario == uuid.UUID(acesso) )).first()
+                if usuario == None:
+                    raise Exception('Cliente não encontrado')
+                if not usuario.flagAtivo:
+                    raise Exception('Cliente bloqueado')
+
         except Exception as e:
                 return jsonify({'mensagem': 'Acesso inválido; ' + str(e)}), 401 #Unauthorized
     
         return route(acesso, *args, **kwargs)
     return decorator
+
 
 def token_admin(route):
     """
@@ -86,7 +90,9 @@ def token_admin(route):
         return route(acesso, *args, **kwargs)
     return decorator
 
+
 @app.route("/admin")
+@cross_origin()
 def obter_token_admin():
     """
     Esta rota cria um token de acesso com o nível de acesso 'ADMIN' e o retorna como uma resposta JSON.
@@ -110,7 +116,9 @@ def listar_clientes(acesso):
     pessoas = db.session.scalars(select(Pessoa).where(Pessoa.nome.like(f'%{nome}%')).order_by(Pessoa.nome)).all()
     return [ pessoa.serializar() for pessoa in pessoas ], 200
 
+
 @app.route("/cliente/inscrever", methods=["POST"])
+@cross_origin()
 def inscrever_cliente():
     try:
         dados = request.get_json(force=True, silent=True)
@@ -121,59 +129,68 @@ def inscrever_cliente():
                 raise Exception('Informar ' + key)
             if len(dados[key]) == 0:
                 raise Exception('Informar ' + key)
+            
         nome = dados.get("nome")
         cpf = dados.get("cpf")
         nascimento = datetime.strptime(dados.get("nascimento"),'%d/%m/%Y')
         email =  dados.get("email")
         senha =  generate_password_hash(dados.get('senha'), method='sha256')
+
         verificar_cpf = db.session.scalars(select(Pessoa).where(Pessoa.cpf == cpf)).all()
         if len(verificar_cpf) > 0:
             raise Exception('CPF já existente')
         verificar_email = db.session.scalars(select(Usuario).where(Usuario.email == email)).all()
         if len(verificar_email) > 0:
             raise Exception('Email já existente')
+        
         pessoa = Pessoa(nome, cpf, nascimento)
-        usuario = Usuario(pessoa, email, senha, tipoUsuario = TipoUsuario.CLIENTE, flagAtivo = False)
+        usuario = Usuario(pessoa, email, senha, tipoUsuario = TipoUsuario.CLIENTE, flagAtivo = True)
         db.session.add_all([pessoa, usuario])
         db.session.commit()
-        return jsonify({'mensagem': 'Cadastro realizado com sucesso'}), 201
+
+        return jsonify({'cliente': pessoa.serializar()}), 201
     except Exception as e:
         return jsonify({'erro': str(e)}), 400
 
-@app.route("/cliente/liberar/<uuid:idUsuario>")
-@token_admin
-def liberar_cliente(acesso, idUsuario):
-    try:
-        print(idUsuario)
-        usuario = db.session.scalars(select(Usuario).where(Usuario.idUsuario == idUsuario)).first()
-        if usuario == None:
-            raise Exception('Não encontrado')
-        usuario.flagAtivo = True
-        db.session.add(usuario)
-        db.session.commit()
-        return jsonify({'mensagem': 'Cliente liberado'}), 200
-    except Exception as e:
-        return jsonify({'erro': str(e)}), 400
 
-@app.route("/cliente/bloquear/<uuid:idUsuario>")
-@token_admin
-def bloquear_cliente(acesso, idUsuario):
-    try:
-        print(idUsuario)
-        usuario = db.session.scalars(select(Usuario).where(Usuario.idUsuario == idUsuario)).first()
-        if usuario == None:
-            raise Exception('Não encontrado')
-        usuario.flagAtivo = False
-        db.session.add(usuario)
-        db.session.commit()
-        return jsonify({'mensagem': 'Cliente bloqueado'}), 200
-    except Exception as e:
-        return jsonify({'erro': str(e)}), 400
+# @app.route("/cliente/liberar/<uuid:idUsuario>")
+# @token_admin
+# def liberar_cliente(acesso, idUsuario):
+#     try:
+#         print(idUsuario)
+#         usuario = db.session.scalars(select(Usuario).where(Usuario.idUsuario == idUsuario)).first()
+#         if usuario == None:
+#             raise Exception('Não encontrado')
+#         usuario.flagAtivo = True
+#         db.session.add(usuario)
+#         db.session.commit()
+#         return jsonify({'mensagem': 'Cliente liberado'}), 200
+#     except Exception as e:
+#         return jsonify({'erro': str(e)}), 400
+
+
+# @app.route("/cliente/bloquear/<uuid:idUsuario>")
+# @token_admin
+# def bloquear_cliente(acesso, idUsuario):
+#     try:
+#         print(idUsuario)
+#         usuario = db.session.scalars(select(Usuario).where(Usuario.idUsuario == idUsuario)).first()
+#         if usuario == None:
+#             raise Exception('Não encontrado')
+#         usuario.flagAtivo = False
+#         db.session.add(usuario)
+#         db.session.commit()
+#         return jsonify({'mensagem': 'Cliente bloqueado'}), 200
+#     except Exception as e:
+#         return jsonify({'erro': str(e)}), 400
     
+
 @app.route("/cliente/logar", methods=["POST"])
+@cross_origin()
 def obter_token_cliente():
     try:
         dados = request.get_json(force=True, silent=True)
+
         if dados == None:
             raise Exception('Informar dados de acesso')
         for key in ['email', 'senha']:
@@ -181,12 +198,15 @@ def obter_token_cliente():
                 raise Exception('Informar ' + key)
             if len(dados[key]) == 0:
                 raise Exception('Informar ' + key)
+            
         email =  dados.get("email")
         usuario = db.session.scalars(select(Usuario).where(Usuario.email == email)).first()
+
         if usuario == None:
             raise Exception('Verificar email')
         if not usuario.flagAtivo:
             raise Exception('Usuário bloqueado')
+        
         if check_password_hash(usuario.senha, dados.get("senha")):
             token = jwt.encode({
                 'acesso': str(usuario.idUsuario),
@@ -195,31 +215,66 @@ def obter_token_cliente():
             return jsonify({'token': token}), 200
         else:
             raise Exception('Autenticação inválida')
+        
     except Exception as e:
         return jsonify({'erro': str(e)}), 401
 
-@app.route("/cliente/<uuid:idPessoa>")
+
+@app.route("/cliente/carteira")
+@cross_origin()
 @token_cliente
-def detalhar_cliente(acesso, idPessoa):
+def detalhar_carteira(acesso):
     try:
-        cliente = db.session.scalars(select(Pessoa).where(Pessoa.idPessoa == idPessoa)).first()
+        cliente = db.session.scalars(select(Pessoa).where(Pessoa.usuario.has(idUsuario = uuid.UUID(acesso)))).first()
         if cliente == None:
             raise Exception('Não encontrado')
         if str(cliente.usuario.idUsuario) != acesso and acesso != 'ADMIN':
             raise Exception('Não autorizado')
+        
         return jsonify(cliente.serializar()), 200
     except Exception as e:
         return jsonify({'erro': str(e)}), 400
 
+
+@app.route("/cliente/transacoes")
+@cross_origin()
+@token_cliente
+def detalhar_transacoes(acesso):
+    try:        
+        cliente = db.session.scalars(select(Pessoa).where(Pessoa.usuario.has(idUsuario = uuid.UUID(acesso)))).first()
+        if cliente == None:
+            raise Exception('Não encontrado')
+        transacoes = db.session.scalars(select(Transacao).where(Transacao.conta.has(idPessoa = cliente.idPessoa)).order_by(Transacao.dataTransacao.desc())).all()
+        return jsonify([ transacao.serializar_completo() for transacao in transacoes ]), 200
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 400
+
+
+# @app.route("/cliente/<uuid:idPessoa>")
+# @token_cliente
+# def detalhar_cliente(acesso, idPessoa):
+#     try:
+#         cliente = db.session.scalars(select(Pessoa).where(Pessoa.idPessoa == idPessoa)).first()
+#         if cliente == None:
+#             raise Exception('Não encontrado')
+#         if str(cliente.usuario.idUsuario) != acesso and acesso != 'ADMIN':
+#             raise Exception('Não autorizado')
+#         return jsonify(cliente.serializar()), 200
+#     except Exception as e:
+#         return jsonify({'erro': str(e)}), 400
+
+
+
 # Rotas de Controle de Conta
 
-@app.route("/contas")
-@token_admin
-def listar_contas(acesso):
-    contas = db.session.scalars(select(Conta)).all()
-    return [ conta.serializar_completo() for conta in contas ], 200
+# @app.route("/contas")
+# @token_admin
+# def listar_contas(acesso):
+#     contas = db.session.scalars(select(Conta)).all()
+#     return [ conta.serializar_completo() for conta in contas ], 200
 
 @app.route("/conta/criar", methods=["POST"])
+@cross_origin()
 @token_cliente
 def criar_conta(acesso):
     try:
@@ -231,86 +286,92 @@ def criar_conta(acesso):
                 raise Exception('Informar ' + key)
             if len(dados[key]) == 0:
                 raise Exception('Informar ' + key)
+            
         idPessoa = uuid.UUID(dados.get("idPessoa"))
         cliente = db.session.scalars(select(Pessoa).where(Pessoa.idPessoa == idPessoa)).first()
+
         if cliente == None:
             raise Exception('Não encontrado')
         if str(cliente.usuario.idUsuario) != acesso and acesso != 'ADMIN':
             raise Exception('Não autorizado')
+        
         conta = Conta(cliente)
         db.session.add(conta)
         db.session.commit()
+
         return jsonify(conta.serializar_completo()), 200
     except Exception as e:
         return jsonify({'erro': str(e)}), 400
 
-@app.route("/conta/ativar/<uuid:idConta>")
-@token_cliente
-def ativar_conta(acesso, idConta):
-    try:
-        conta = db.session.scalars(select(Conta).where(Conta.idConta == idConta)).first()
-        if conta == None:
-            raise Exception('Não encontrada')
-        if str(conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
-            raise Exception('Não autorizado')        
-        conta.flagAtivo = True
-        db.session.add(conta)
-        db.session.commit()
-        return jsonify({'mensagem': 'Conta liberada'}), 200
-    except Exception as e:
-        return jsonify({'erro': str(e)}), 400
 
-@app.route("/conta/bloquear/<uuid:id>")
-@token_cliente
-def bloquear_conta(acesso, idConta):
-    try:
-        conta = db.session.scalars(select(Conta).where(Conta.idConta == idConta)).first()
-        if conta == None:
-            raise Exception('Não encontrada')
-        if str(conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
-            raise Exception('Não autorizado')        
-        conta.flagAtivo = True
-        db.session.add(conta)
-        db.session.commit()
-        return jsonify({'mensagem': 'Conta bloqueada'}), 200
-    except Exception as e:
-        return jsonify({'erro': str(e)}), 400
+# @app.route("/conta/ativar/<uuid:idConta>")
+# @token_cliente
+# def ativar_conta(acesso, idConta):
+#     try:
+#         conta = db.session.scalars(select(Conta).where(Conta.idConta == idConta)).first()
+#         if conta == None:
+#             raise Exception('Não encontrada')
+#         if str(conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
+#             raise Exception('Não autorizado')        
+#         conta.flagAtivo = True
+#         db.session.add(conta)
+#         db.session.commit()
+#         return jsonify({'mensagem': 'Conta liberada'}), 200
+#     except Exception as e:
+#         return jsonify({'erro': str(e)}), 400
+
+# @app.route("/conta/bloquear/<uuid:id>")
+# @token_cliente
+# def bloquear_conta(acesso, idConta):
+#     try:
+#         conta = db.session.scalars(select(Conta).where(Conta.idConta == idConta)).first()
+#         if conta == None:
+#             raise Exception('Não encontrada')
+#         if str(conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
+#             raise Exception('Não autorizado')        
+#         conta.flagAtivo = True
+#         db.session.add(conta)
+#         db.session.commit()
+#         return jsonify({'mensagem': 'Conta bloqueada'}), 200
+#     except Exception as e:
+#         return jsonify({'erro': str(e)}), 400
     
-@app.route("/conta/<uuid:idConta>")
-@token_cliente
-def detalhar_conta(acesso, idConta):
-    try:
-        conta = db.session.scalars(select(Conta).where(Conta.idConta == idConta)).first()
-        if conta == None:
-            raise Exception('Não encontrada')
-        if str(conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
-            raise Exception('Não autorizado')        
-        return jsonify(conta.serializar_completo()), 200
-    except Exception as e:
-        return jsonify({'erro': str(e)}), 400
+# @app.route("/conta/<uuid:idConta>")
+# @token_cliente
+# def detalhar_conta(acesso, idConta):
+#     try:
+#         conta = db.session.scalars(select(Conta).where(Conta.idConta == idConta)).first()
+#         if conta == None:
+#             raise Exception('Não encontrada')
+#         if str(conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
+#             raise Exception('Não autorizado')        
+#         return jsonify(conta.serializar_completo()), 200
+#     except Exception as e:
+#         return jsonify({'erro': str(e)}), 400
     
-@app.route("/conta/<uuid:idConta>/transacoes")
-@token_cliente
-def listar_transacoes_conta(acesso, idConta):
-    try:
-        conta = db.session.scalars(select(Conta).where(Conta.idConta == idConta)).first()
-        if conta == None:
-            raise Exception('Não encontrada')
-        if str(conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
-            raise Exception('Não autorizado')        
-        return jsonify([ transacao.serializar_completo() for transacao in conta.transacoes]), 200
-    except Exception as e:
-        return jsonify({'erro': str(e)}), 400
+# @app.route("/conta/<uuid:idConta>/transacoes")
+# @token_cliente
+# def listar_transacoes_conta(acesso, idConta):
+#     try:
+#         conta = db.session.scalars(select(Conta).where(Conta.idConta == idConta)).first()
+#         if conta == None:
+#             raise Exception('Não encontrada')
+#         if str(conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
+#             raise Exception('Não autorizado')        
+#         return jsonify([ transacao.serializar_completo() for transacao in conta.transacoes]), 200
+#     except Exception as e:
+#         return jsonify({'erro': str(e)}), 400
 
-# Rotas de Controle de Transacao
+# # Rotas de Controle de Transacao
 
-@app.route("/transacoes")
-@token_admin
-def listar_transacoes(acesso):
-    transacoes = db.session.scalars(select(Transacao)).all()
-    return [ transacao.serializar_completo() for transacao in transacoes ], 200
+# @app.route("/transacoes")
+# @token_admin
+# def listar_transacoes(acesso):
+#     transacoes = db.session.scalars(select(Transacao)).all()
+#     return [ transacao.serializar_completo() for transacao in transacoes ], 200
 
 @app.route("/transacao/depositar", methods=["POST"])
+@cross_origin()
 @token_cliente
 def depositar(acesso):
     try:
@@ -322,23 +383,30 @@ def depositar(acesso):
                 raise Exception('Informar ' + key)
             if len(dados[key]) == 0:
                 raise Exception('Informar ' + key)
+            
         valor = float(dados.get("valor"))
         if valor <= 0:
             raise Exception('Inválido')
         idConta = uuid.UUID(dados.get("idConta"))
         conta = db.session.scalars(select(Conta).where(Conta.idConta == idConta)).first()
+
         if conta == None:
             raise Exception('Não encontrado')
         if str(conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
             raise Exception('Não autorizado')
+        
         transacao = Transacao(conta, valor = valor)
-        db.session.add(transacao)
+        conta.saldo = float(conta.saldo) + valor
+        db.session.add_all([transacao, conta])
         db.session.commit()
+
         return jsonify(transacao.serializar_completo()), 200
     except Exception as e:
         return jsonify({'erro': str(e)}), 400
 
+
 @app.route("/transacao/sacar", methods=["POST"])
+@cross_origin()
 @token_cliente
 def sacar(acesso):
     try:
@@ -350,67 +418,85 @@ def sacar(acesso):
                 raise Exception('Informar ' + key)
             if len(dados[key]) == 0:
                 raise Exception('Informar ' + key)
+            
         valor = float(dados.get("valor"))
         if valor <= 0:
             raise Exception('Inválido')
         idConta = uuid.UUID(dados.get("idConta"))
         conta = db.session.scalars(select(Conta).where(Conta.idConta == idConta)).first()
+
         if conta == None:
             raise Exception('Não encontrado')
         if str(conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
             raise Exception('Não autorizado')
+        
         transacao = Transacao(conta, valor = -valor)
         if float(conta.saldo) - valor < 0 or float(conta.limiteSaqueDiario) - valor < 0:
             raise Exception('Saldo insuficiente ou limite ultrapassado')
-        db.session.add(transacao)
+        
+        conta.saldo = float(conta.saldo) - valor
+        db.session.add_all([transacao, conta])
         db.session.commit()
+
         return jsonify(transacao.serializar_completo()), 200
     except Exception as e:
         return jsonify({'erro': str(e)}), 400
 
-@app.route("/transacao/<uuid:idTransacao>")
-@token_cliente
-def detalhar_transacao(acesso, idTransacao):
-    try:
-        transacao = db.session.scalars(select(Transacao).where(Transacao.idTransacao == idTransacao)).first()
-        if transacao == None:
-            raise Exception('Não encontrada')
-        if str(transacao.conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
-            raise Exception('Não autorizado')        
-        return jsonify(transacao.serializar_completo()), 200
-    except Exception as e:
-        return jsonify({'erro': str(e)}), 400
 
-@app.route("/transferencia", methods=["POST"])
+# @app.route("/transacao/<uuid:idTransacao>")
+# @token_cliente
+# def detalhar_transacao(acesso, idTransacao):
+#     try:
+#         transacao = db.session.scalars(select(Transacao).where(Transacao.idTransacao == idTransacao)).first()
+#         if transacao == None:
+#             raise Exception('Não encontrada')
+#         if str(transacao.conta.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
+#             raise Exception('Não autorizado')        
+#         return jsonify(transacao.serializar_completo()), 200
+#     except Exception as e:
+#         return jsonify({'erro': str(e)}), 400
+
+
+@app.route("/transacao/transferir", methods=["POST"])
+@cross_origin()
 @token_cliente
 def conciliar_transferencia(acesso):
     try:
         dados = request.get_json(force=True, silent=True)
         if dados == None:
             raise Exception('Informar dados da transferência')
-        for key in ['idConta_remetente', 'idConta_destinatario', valor]:
+        for key in ['idConta_remetente', 'idConta_destinatario', 'valor']:
             if key not in dados:
                 raise Exception('Informar ' + key)
             if len(dados[key]) == 0:
                 raise Exception('Informar ' + key)
+            
         idConta_remetente = uuid.UUID(dados.get("idConta_remetente"))
         conta_remetente = db.session.scalars(select(Conta).where(Conta.idConta == idConta_remetente)).first()
         if conta_remetente == None:
             raise Exception('Não encontrado')
         if str(conta_remetente.pessoa.usuario.idUsuario) != acesso and acesso != 'ADMIN':
             raise Exception('Não autorizado')
+        
         idConta_destinatario = uuid.UUID(dados.get("idConta_destinatario"))
         conta_destinatario = db.session.scalars(select(Conta).where(Conta.idConta == idConta_destinatario)).first()
         if conta_destinatario == None:
             raise Exception('Não encontrado')
+        
         valor = float(dados.get("valor"))
+
         transacao_remetente = Transacao(conta_remetente, -abs(valor))
         transacao_destinatario = Transacao(conta_destinatario, abs(valor))
+
         if transacao_remetente.valor + float(conta_remetente.saldo) < 0 or transacao_remetente.valor + float(conta_remetente.limiteSaqueDiario) < 0:
             raise Exception('Saldo insuficiente ou limite ultrapassado')
 
-        db.session.add_all([transacao_remetente,transacao_destinatario])
+        conta_remetente.saldo = float(conta_remetente.saldo) + transacao_remetente.valor
+        conta_destinatario.saldo = float(conta_destinatario.saldo) + transacao_destinatario.valor
+
+        db.session.add_all([transacao_remetente,transacao_destinatario, conta_remetente, conta_destinatario])
         db.session.commit()
+
         return jsonify( { 'remetente': transacao_remetente.serializar_completo(), 'destinatario': transacao_destinatario.serializar_completo() }), 200
     except Exception as e:
         return jsonify({'erro': str(e)}), 400
